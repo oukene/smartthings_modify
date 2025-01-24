@@ -114,11 +114,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_get_loaded_integration(hass, DOMAIN).async_get_platforms(PLATFORMS)
     app = App()
     try:
-        try:
-            with open("custom_components/smartthings/smartapp.p", "rb") as fr:
-                app = pickle.load(fr)
-        except:
-            """"""
+        def load_smartapp():
+            try:
+                with open("custom_components/smartthings/smartapp.p", "rb") as fr:
+                    return pickle.load(fr)
+            except:
+                """"""
+        app = await hass.async_add_executor_job(load_smartapp)
+
         manager = hass.data[DOMAIN][DATA_MANAGER]
         smart_app = manager.smartapps.get(entry.data[CONF_APP_ID])
         try:
@@ -140,11 +143,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             
             smart_app = setup_smartapp(hass, app)
 
-        try:
-            with open("custom_components/smartthings/smartapp.p", "wb") as fw:
-                pickle.dump(app, fw)
-        except:
-            """"""
+        def save_smartapp(app):
+            try:
+                with open("custom_components/smartthings/smartapp.p", "wb") as fw:
+                    pickle.dump(app, fw)
+            except:
+                """"""
+        await hass.async_add_executor_job(save_smartapp, app)
 
         try:
             # Validate and retrieve the installed app.
@@ -378,9 +383,9 @@ class DeviceBroker:
                     CONF_REFRESH_TOKEN: self._token.refresh_token,
                 },
             )
-            for device in self.devices:
-                device._api._token = self._token.access_token
-                
+            for id, device in self.devices.items():
+                device.status._api._token = self._token.access_token
+
             _LOGGER.debug(
                 "Regenerated refresh token for installed app: %s",
                 self._installed_app_id,
