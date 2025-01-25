@@ -13,8 +13,12 @@ import traceback
 
 _LOGGER = logging.getLogger(__name__)
 
+BASE = "custom_components/st_common/"
 
-async def async_get_app_info(path, app_id, token):
+async def async_get_app_info(app_id, token):
+
+    path = BASE + app_id + ".json"
+
     app = App()
     try:
         # 파일이 있는지 먼저 확인

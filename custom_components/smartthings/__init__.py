@@ -28,7 +28,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.setup import SetupPhases, async_pause_setup
 
-from custom_components.smartthings_common.custom_api import async_get_app_info
+from custom_components.st_common.custom_api import async_get_app_info
 
 from .config_flow import SmartThingsFlowHandler  # noqa: F401
 from .const import (
@@ -113,7 +113,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_get_loaded_integration(hass, DOMAIN).async_get_platforms(PLATFORMS)
 
     try:
-        app = await async_get_app_info("custom_components/smartthings_common/" +entry.data[CONF_LOCATION_ID] + ".json", entry.data[CONF_APP_ID], entry.data[CONF_ACCESS_TOKEN])
+        app = await async_get_app_info(entry.data[CONF_APP_ID], entry.data[CONF_ACCESS_TOKEN])
     except:
         _LOGGER.error("can not install smartthings, not found app info")
         return False
