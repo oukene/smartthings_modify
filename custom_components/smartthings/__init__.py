@@ -10,7 +10,7 @@ import logging
 
 from aiohttp.client_exceptions import ClientConnectionError, ClientResponseError
 from pysmartapp.event import EVENT_TYPE_DEVICE
-from pysmartthings import APIInvalidGrant, Attribute, Capability, SmartThings, App
+from pysmartthings import APIInvalidGrant, Attribute, Capability, SmartThings
 
 from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntry
 from homeassistant.const import CONF_ACCESS_TOKEN, CONF_CLIENT_ID, CONF_CLIENT_SECRET
@@ -27,6 +27,8 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.setup import SetupPhases, async_pause_setup
+
+from custom_components.smartthings_common.custom_api import async_get_app_info
 
 from .config_flow import SmartThingsFlowHandler  # noqa: F401
 from .const import (
@@ -51,8 +53,6 @@ from .smartapp import (
     validate_installed_app,
     validate_webhook_requirements,
 )
-
-import pickle
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -88,7 +88,6 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Initialize config entry which represents an installed SmartApp."""
-    
     # For backwards compat
     if entry.unique_id is None:
         hass.config_entries.async_update_entry(
@@ -112,58 +111,29 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # so the integration does not do blocking I/O in the event loop
     # to import the modules.
     await async_get_loaded_integration(hass, DOMAIN).async_get_platforms(PLATFORMS)
-    app = App()
-    try:
-        def load_smartapp():
-            try:
-                with open("custom_components/smartthings/smartapp.p", "rb") as fr:
-                    return pickle.load(fr)
-            except:
-                """"""
-        app = await hass.async_add_executor_job(load_smartapp)
 
+    try:
+        app = await async_get_app_info("custom_components/smartthings_common/" +entry.data[CONF_LOCATION_ID] + ".json", entry.data[CONF_APP_ID], entry.data[CONF_ACCESS_TOKEN])
+    except:
+        _LOGGER.error("can not install smartthings, not found app info")
+        return False
+    try:
+        # See if the app is already setup. This occurs when there are
+        # installs in multiple SmartThings locations (valid use-case)
         manager = hass.data[DOMAIN][DATA_MANAGER]
         smart_app = manager.smartapps.get(entry.data[CONF_APP_ID])
-        try:
-            tmp = await api.app(entry.data[CONF_APP_ID])
-            app._app_id = entry.data[CONF_APP_ID]
-            app._webhook_public_key = tmp._webhook_public_key
-            app._webhook_target_url = tmp._webhook_target_url
-        except:
-            """"""            
-
         if not smart_app:
             # Validate and setup the app.
-            # try:
-            #     if not app:
-            #         app = await api.app(entry.data[CONF_APP_ID])
-            #     _LOGGER.error("app info : " + str(app))
-            # except:
-            #     _LOGGER.error("error 167");
-            
+            #app = await api.app(entry.data[CONF_APP_ID])
             smart_app = setup_smartapp(hass, app)
 
-        def save_smartapp(app):
-            try:
-                with open("custom_components/smartthings/smartapp.p", "wb") as fw:
-                    pickle.dump(app, fw)
-            except:
-                """"""
-        await hass.async_add_executor_job(save_smartapp, app)
+        # Validate and retrieve the installed app.
+        installed_app = await validate_installed_app(
+            api, entry.data[CONF_INSTALLED_APP_ID]
+        )
 
-        try:
-            # Validate and retrieve the installed app.
-            installed_app = await validate_installed_app(
-                api, entry.data[CONF_INSTALLED_APP_ID]
-            )
-        except:
-            """"""
-
-        try:
-            # Get scenes
-            scenes = await async_get_entry_scenes(entry, api)
-        except:
-            """"""
+        # Get scenes
+        scenes = await async_get_entry_scenes(entry, api)
 
         # Get SmartApp token to sync subscriptions
         token = await api.generate_tokens(
@@ -171,10 +141,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry.data[CONF_CLIENT_SECRET],
             entry.data[CONF_REFRESH_TOKEN],
         )
-
-
-        api = SmartThings(async_get_clientsession(hass), token.access_token)
-        
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, 
             CONF_ACCESS_TOKEN: token.access_token,
@@ -182,12 +148,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }
         )
 
+        api = SmartThings(async_get_clientsession(hass), entry.data[CONF_ACCESS_TOKEN])
+
         # Get devices and their current status
-        try:
-            devices = await api.devices(location_ids=[installed_app.location_id])
-        except:
-            """"""
-            
+        devices = await api.devices(location_ids=[installed_app.location_id])
+
         async def retrieve_device_status(device):
             try:
                 await device.status.refresh()
