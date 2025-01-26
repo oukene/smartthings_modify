@@ -28,7 +28,7 @@ from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_loaded_integration
 from homeassistant.setup import SetupPhases, async_pause_setup
 
-from custom_components.st_common.custom_api import async_get_app_info
+from .custom_api import async_get_app_info, async_remove_app_info
 
 from .config_flow import SmartThingsFlowHandler  # noqa: F401
 from .const import (
@@ -112,11 +112,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # to import the modules.
     await async_get_loaded_integration(hass, DOMAIN).async_get_platforms(PLATFORMS)
 
-    try:
-        app = await async_get_app_info(entry.data[CONF_APP_ID], entry.data[CONF_ACCESS_TOKEN])
-    except:
-        _LOGGER.error("can not install smartthings, not found app info")
-        return False
+    app = await async_get_app_info(hass, entry.data[CONF_APP_ID], entry.data[CONF_ACCESS_TOKEN])
+
     try:
         # See if the app is already setup. This occurs when there are
         # installs in multiple SmartThings locations (valid use-case)
@@ -279,6 +276,9 @@ async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
 
     if len(all_entries) == 1:
         await unload_smartapp_endpoint(hass)
+
+    # Remove Info
+    await async_remove_app_info(app_id)
 
 
 class DeviceBroker:
